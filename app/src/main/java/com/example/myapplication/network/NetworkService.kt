@@ -16,10 +16,10 @@ class NetworkService(private val context: Context) {
     private val serviceName = "LanChat"
     private val serviceType = "_lanchat._tcp."
     private lateinit var nsdManager: NsdManager
-    
+
     private val _devices = MutableStateFlow<List<DeviceInfo>>(emptyList())
     val devices: StateFlow<List<DeviceInfo>> = _devices
-    
+
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
 
@@ -34,17 +34,17 @@ class NetworkService(private val context: Context) {
             override fun onDiscoveryStarted(serviceType: String) {
                 _devices.value = emptyList() // Clear existing devices
             }
-            
+
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (serviceInfo.serviceType != serviceType) return
-                
+
                 nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
                     override fun onResolveFailed(service: NsdServiceInfo, error: Int) {
                         // Retry resolution after delay
                         Thread.sleep(1000)
                         nsdManager.resolveService(service, this)
                     }
-                    
+
                     override fun onServiceResolved(service: NsdServiceInfo) {
                         val device = DeviceInfo(
                             name = service.serviceName,
@@ -56,25 +56,34 @@ class NetworkService(private val context: Context) {
                     }
                 })
             }
-            
+
             override fun onServiceLost(service: NsdServiceInfo) {
                 _devices.value = _devices.value.filter { it.name != service.serviceName }
             }
-            
+
             override fun onDiscoveryStopped(serviceType: String) {}
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                // Handle discovery failure
+            }
+
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+                // Handle stop discovery failure
+            }
         }
-        
+
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
     private fun startServer() {
         Thread {
-            val serverSocket = ServerSocket(serverPort)
-            while (true) {
-                val socket = serverSocket.accept()
-                handleClientConnection(socket)
+            try {
+                val serverSocket = ServerSocket(serverPort)
+                while (true) {
+                    val socket = serverSocket.accept()
+                    handleClientConnection(socket)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }.start()
     }
@@ -86,7 +95,7 @@ class NetworkService(private val context: Context) {
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 writer.println(message)
                 socket.close()
-                
+
                 val chatMessage = ChatMessage("Me", message)
                 _messages.value = _messages.value + chatMessage
             } catch (e: Exception) {
@@ -100,7 +109,7 @@ class NetworkService(private val context: Context) {
             try {
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val message = reader.readLine()
-                val chatMessage = ChatMessage(socket.inetAddress.hostAddress, message)
+                val chatMessage = ChatMessage(socket.inetAddress.hostAddress ?: "Unknown", message)
                 _messages.value = _messages.value + chatMessage
                 socket.close()
             } catch (e: Exception) {
